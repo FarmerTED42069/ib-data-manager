@@ -1,0 +1,7 @@
+# Interactive Brokers Data Manager Requirements
+
+# Core dependency for IB API connectivity
+ib_insync>=0.9.86
+
+# Utilities
+python-dateutil>=2.8.0
