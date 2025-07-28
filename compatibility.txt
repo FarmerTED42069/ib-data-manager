@@ -1,0 +1,67 @@
+# Compatibility & Integration Guide: Stock Screener with IB Data Manager
+
+This document explains how to extend your IB Data Manager app to incorporate a stock screener UI using Interactive Brokers (IBKR) data via `ib_insync`. It summarizes best practices and provides up-to-date code patterns for integrating scanner features.
+
+---
+
+## 1. Requirements
+- Python 3.8+
+- `ib_insync` (latest version recommended)
+- Access to Interactive Brokers Gateway or TWS
+
+## 2. How IBKR Stock Screening Works
+IBKR provides a "Scanner" API that lets you retrieve lists of stocks matching various criteria (e.g., top gainers, volume leaders, price filters). With `ib_insync`, you use the `ScannerSubscription` object and call `ib.reqScannerData()`.
+
+## 3. Example: Fetch Top Percentage Gainers
+```python
+from ib_insync import IB, ScannerSubscription
+
+ib = IB()
+ib.connect('127.0.0.1', 4002, clientId=1)
+
+sub = ScannerSubscription(
+    instrument='STK', 
+    locationCode='STK.US.MAJOR', 
+    scanCode='TOP_PERC_GAIN')
+
+scanData = ib.reqScannerData(sub)
+for sd in scanData:
+    print(sd.contractDetails.contract.symbol, sd)
+```
+
+## 4. Filtering Scanner Results
+You can filter by price, volume, etc.:
+```python
+sub.abovePrice = 200
+scanData = ib.reqScannerData(sub)
+```
+
+Or use advanced filters with TagValue:
+```python
+from ib_insync import TagValue
+sub = ScannerSubscription(
+    instrument='STK',
+    locationCode='STK.US.MAJOR',
+    scanCode='TOP_PERC_GAIN')
+tagValues = [TagValue("changePercAbove", "20"), TagValue('priceAbove', 5), TagValue('priceBelow', 50)]
+scanData = ib.reqScannerData(sub, [], tagValues)
+```
+
+## 5. Integrating into Your GUI
+- Add a new section or tab to your Tkinter UI for "Stock Screener".
+- Let the user select scan type (e.g., Top Gainers, Volume Leaders) and filters (price, volume, percent change).
+- On submit, build a `ScannerSubscription` with user parameters and call `ib.reqScannerData()`.
+- Display results in a table/grid (e.g., Tkinter Treeview).
+
+## 6. Best Practices
+- Always qualify contracts before requesting details or market data.
+- Handle empty or slow responses gracefully (show loading indicators).
+- Log scanner queries and results for troubleshooting.
+
+## 7. References
+- [ib_insync Scanner Example](https://github.com/erdewit/ib_insync/blob/master/notebooks/scanners.ipynb)
+- [IBKR API Docs: Scanner](https://interactivebrokers.github.io/tws-api/market_scanners.html)
+
+---
+
+This code and approach are compatible with your current IB Data Manager structure. For advanced screening, combine scanner results with your database or external analytics as needed.
