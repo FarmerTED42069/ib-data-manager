@@ -184,6 +184,18 @@ Transform the IB Data Manager from a functional but performance-limited applicat
 - **Performance Testing**: 15-20 hours
 - **Total Testing**: 65-90 hours
 
+## Next Steps (2025-07-28)
+
+### Async GUI and Data Manager
+- [ ] Finalize and test backend chunking logic for historical data (auto-chunking for over-threshold requests)
+- [ ] Implement batch export UI and logic (multi-symbol, date range, bar size, flexible file options)
+- [ ] Add advanced export filters (symbol, date range, bar size, file format)
+- [ ] Polish max allowed threshold helper and chunking UX
+- [ ] Expand database viewer and CSV export capabilities (for realtime and historical)
+- [ ] Add automated tests for chunking, export, and real-time recording
+- [ ] Update user and developer documentation to reflect new async, chunking, and real-time features
+- [ ] Gather user feedback on new UX and performance
+
 ## Deliverables
 
 ### Code Deliverables

@@ -158,18 +158,38 @@ class AsyncIBConnector:
             
     async def get_historical_data(self, symbol, sec_type="STK", exchange="SMART", 
                                 currency="USD", duration="1 D", bar_size="1 min", expiry=None):
-        """Get historical data for a contract"""
+        """
+        Get historical data for a contract. Validates duration and bar_size before sending to IBKR.
+        Duration: <number> <unit> (e.g. 1 D, 6 M, 2 Y, 3 W, 30 S), unit in S/D/W/M/Y
+        Bar Size: IBKR supported intervals (e.g. 1 min, 5 mins, 1 day, 1 week, 1 month, etc.)
+        """
+        def validate_duration(duration):
+            import re
+            pattern = r"^\s*([1-9][0-9]*)\s*([SMWDYsmwdy])\s*$"
+            match = re.match(pattern, duration.strip())
+            if not match:
+                return False
+            num, unit = match.groups()
+            return unit.upper() in ["S", "D", "W", "M", "Y"]
+        def validate_bar_size(bar_size):
+            valid_sizes = [
+                "1 sec", "5 secs", "10 secs", "15 secs", "30 secs", "1 min", "2 mins", "3 mins", "5 mins", "10 mins", "15 mins", "30 mins", "1 hour", "1 day", "1 week", "1 month"
+            ]
+            return bar_size in valid_sizes
+        if not validate_duration(duration):
+            logging.error(f"Invalid duration string: {duration}. Must be <number> <unit> (S/D/W/M/Y). Example: 1 D, 6 M, 2 Y, 3 W, 30 S.")
+            return None
+        if not validate_bar_size(bar_size):
+            logging.error(f"Invalid bar size: {bar_size}. Must be one of IBKR supported intervals.")
+            return None
         try:
             contract = self.create_contract(symbol, sec_type, exchange, currency, expiry)
-            
             # Qualify the contract
             qualified_contracts = await self.ib.qualifyContractsAsync(contract)
             if not qualified_contracts:
                 logging.error(f"Failed to qualify contract for {symbol}")
                 return None
-                
             qualified_contract = qualified_contracts[0]
-            
             # Request historical data
             bars = await self.ib.reqHistoricalDataAsync(
                 qualified_contract,
@@ -180,9 +200,7 @@ class AsyncIBConnector:
                 useRTH=False,
                 formatDate=1
             )
-            
             return bars
-            
         except Exception as e:
             logging.error(f"Error getting historical data for {symbol}: {str(e)}")
             return None

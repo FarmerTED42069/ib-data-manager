@@ -63,6 +63,42 @@ python test_api_settings.py
 ### Trading Module Usage
 ```python
 from fixed_ibkr_trader import IBKRTrader
+trader = IBKRTrader()
+# Use trader methods for automated trading
+```
+
+## Async GUI & Advanced Features
+
+To launch the async GUI with advanced features:
+```bash
+python -m ib_data_manager.gui.main_async
+```
+
+- Use the Data Type selector for Historical, Real-time, Account, or Market Depth
+- Fill in symbol, contract type, expiry (for futures), etc.
+- For historical data, set duration and bar size; use chunking for long periods
+- For real-time, click 'Fetch Data' to start recording, and 'Stop Realtime' to end
+- Use 'Export CSV' and 'View Database' for data management
+
+
+### Basic Connection Test
+```bash
+python minimal_connect.py
+```
+
+### Comprehensive Diagnostics
+```bash
+python connection_diagnostics.py
+```
+
+### API Settings Verification
+```bash
+python test_api_settings.py
+```
+
+### Trading Module Usage
+```python
+from fixed_ibkr_trader import IBKRTrader
 
 trader = IBKRTrader()
 # Use trader methods for automated trading
@@ -94,6 +130,10 @@ Default connection settings:
 ## Contributing
 
 This is a utility collection designed for IBKR API development and troubleshooting. Feel free to extend or modify for your specific use cases.
+
+## Directory Structure
+
+See PROJECT_STRUCTURE.md for a full breakdown, including async modules, GUI enhancements, and new features (chunking, batch export, real-time recording).
 
 ## License
 

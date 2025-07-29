@@ -12,6 +12,41 @@
 ib_data_manager/
 ├── README.md                    # Project overview and setup instructions
 ├── requirements.txt             # Python dependencies
+├── setup.py                     # Package installation script
+├── pyproject.toml               # Modern Python project configuration
+├── .gitignore                   # Git ignore rules
+├── changelog.md                 # Change tracking
+├── gameplan.md                  # Development roadmap
+│
+├── ib_data_manager/
+│   ├── __init__.py
+│   ├── main.py                  # Application entry point
+│   ├── main_async.py            # Async GUI (historical, realtime, export, chunking)
+│   ├── config.py                # Configuration management
+│   ├── database.py              # Sync database operations
+│   ├── async_database.py        # Async database operations
+│   ├── ib_connector.py          # Sync IB API connection
+│   ├── async_ib_connector.py    # Async IB API connection
+│   ├── ...
+│   └── gui/
+│       ├── __init__.py
+│       ├── main_window.py
+│       ├── dialogs.py
+│       ├── widgets.py
+│       └── main_async.py        # Main async GUI (entry)
+│
+│   # ... (rest unchanged)
+
+# ...
+
+## Benefits of This Structure
+
+### 1. **Clear Separation of Concerns**
+- Async and sync connectors, database, and GUI modules are separated for maintainability
+- GUI supports async operations, chunking, batch export, and real-time recording
+- New features (chunking, batch export, real-time) are modular and testable
+
+├── requirements.txt             # Python dependencies
 ├── setup.py                    # Package installation script
 ├── pyproject.toml              # Modern Python project configuration
 ├── .gitignore                  # Git ignore rules

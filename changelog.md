@@ -256,12 +256,24 @@ This changelog documents all code changes made during the optimization of the IB
 - **Memory**: Memory usage profiling during extended operations
 - **Concurrency**: Multiple simultaneous data streams and operations
 
-### Performance Test Cases
-1. **Bulk Data Insert**: Measure insert rate for historical data batches
-2. **Real-time Data Processing**: Measure latency for live market data
-3. **Memory Usage**: Monitor memory consumption during extended operations
-4. **Connection Resilience**: Test reconnection and error recovery
-5. **GUI Responsiveness**: Measure UI response times during background operations
+### Phase 2: GUI Async Refactor (In Progress)
+
+**[COMPLETED]** `ib_data_manager/gui/main_async.py` - Chunking, Max Threshold Helper, Batch Export UI
+- **Change**: Added a chunking checkbox to the Historical Data Settings panel. When checked, the app will automatically split (chunk) historical data requests into consecutive, IBKR-compliant durations and merge the results.
+- **Change**: Added a dynamic max allowed threshold helper label, which updates to show the IBKR-permitted maximum duration for the selected bar size (e.g., "Max allowed: 1 week for 1 min bars").
+- **Change**: Updated fetch logic to prepare for chunked requests and batch export of multi-symbol or multi-range data.
+- **Reason**: Prevent errors from over-limit requests, streamline long-duration backfills, and lay groundwork for batch export/import features.
+- **Impact**: User can fetch longer periods (e.g., months of 1m bars) in a single operation; UI is more informative and robust; project is ready for advanced export features.
+- **Status**: ✅ Completed (GUI), Backend chunking logic in progress.
+- **User-Facing**: New chunking checkbox, max duration guidance label, improved UX for historical data fetch/export.
+
+---
+- **Details**: 
+  - Consolidating async GUI code into `main_async.py`
+  - Removing/modernizing legacy threading logic
+  - Ensuring all backend calls use async/await
+  - Implementing safe widget update patterns via `root.after()`
+  - Planning further modularization and documentation
 
 ---
 
