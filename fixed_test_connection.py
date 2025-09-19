@@ -10,6 +10,8 @@ import sys
 import logging
 import random
 
+from fixed_ibkr_trader import get_current_expiry
+
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -49,9 +51,8 @@ def test_connection():
                 logger.info("\nNo open positions")
             
             # Get calculated front-month expiry
-            current_month = 6  # June
-            current_year = 2025  
-            logger.info(f"\nExpected front-month futures expiry: {current_year}{current_month:02}")
+            expiry = get_current_expiry()
+            logger.info(f"\nExpected front-month futures expiry: {expiry}")
             
             logger.info("\nConnection test completed successfully!")
             return True
