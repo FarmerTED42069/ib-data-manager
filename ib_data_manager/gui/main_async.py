@@ -10,6 +10,7 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 from datetime import datetime
 import logging
 from ib_data_manager.api.async_ib_connector import AsyncIBConnector
+from ib_data_manager.gui.enhanced_data_acquisition import EnhancedDataAcquisition
 import os
 import json
 
@@ -42,6 +43,9 @@ class AsyncIBDataManager:
         self.last_historical_data = None
         self.last_historical_symbol = None
 
+        # Enhanced data acquisition
+        self.enhanced_da = None
+
         # Create GUI
         self.create_widgets()
 
@@ -61,10 +65,32 @@ class AsyncIBDataManager:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(3, weight=1)
+        main_frame.rowconfigure(1, weight=1)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="IB Data Manager - Enhanced Edition", 
+                              font=("Arial", 16, "bold"))
+        title_label.grid(row=0, column=0, pady=(0, 10))
+        
+        # Create notebook for tabs
+        self.notebook = ttk.Notebook(main_frame)
+        self.notebook.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create tabs
+        self.create_basic_tab()
+        self.create_enhanced_tab()
+        
+    def create_basic_tab(self):
+        """Create the basic data acquisition tab"""
+        basic_frame = ttk.Frame(self.notebook)
+        self.notebook.add(basic_frame, text="Basic Data Acquisition")
+        
+        # Configure grid weights
+        basic_frame.columnconfigure(0, weight=1)
+        basic_frame.rowconfigure(3, weight=1)
         
         # Connection status frame
-        status_frame = ttk.LabelFrame(main_frame, text="Connection Status", padding="5")
+        status_frame = ttk.LabelFrame(basic_frame, text="Connection Status", padding="5")
         status_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
         self.status_label = ttk.Label(status_frame, text="Not Connected", foreground="red")
@@ -74,7 +100,7 @@ class AsyncIBDataManager:
         ttk.Button(status_frame, text="Disconnect", command=self.disconnect_ib).grid(row=0, column=2, padx=5)
         
         # Data request frame
-        request_frame = ttk.LabelFrame(main_frame, text="Data Request", padding="5")
+        request_frame = ttk.LabelFrame(basic_frame, text="Data Request", padding="5")
         request_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
 
         # Symbol entry
@@ -119,7 +145,7 @@ class AsyncIBDataManager:
         self.browse_contracts_btn.grid(row=0, column=2, padx=2)
         
         # Data type selection
-        data_type_frame = ttk.LabelFrame(main_frame, text="Data Type", padding="5")
+        data_type_frame = ttk.LabelFrame(basic_frame, text="Data Type", padding="5")
         data_type_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
         self.data_type = tk.StringVar(value="historical")
@@ -133,7 +159,7 @@ class AsyncIBDataManager:
                        value="market_depth", command=self.on_data_type_change).grid(row=0, column=3, padx=5, pady=5)
         
         # Historical data settings with enhanced date range selection
-        self.historical_frame = ttk.LabelFrame(main_frame, text="Historical Data Settings", padding="5")
+        self.historical_frame = ttk.LabelFrame(basic_frame, text="Historical Data Settings", padding="5")
         self.historical_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         
         # Date range selection mode
@@ -222,7 +248,7 @@ class AsyncIBDataManager:
         self.daterange_frame.grid_remove()
         
         # Action buttons
-        button_frame = ttk.Frame(main_frame)
+        button_frame = ttk.Frame(basic_frame)
         button_frame.grid(row=4, column=0, columnspan=2, pady=10)
         
         ttk.Button(button_frame, text="Fetch Data", command=self.fetch_data).grid(row=0, column=0, padx=5)
@@ -231,13 +257,30 @@ class AsyncIBDataManager:
         ttk.Button(button_frame, text="Quick Export", command=self.quick_export).grid(row=0, column=3, padx=5)
         
         # Output text area
-        self.output_text = tk.Text(main_frame, height=15, width=80)
+        self.output_text = tk.Text(basic_frame, height=15, width=80)
         self.output_text.grid(row=5, column=0, columnspan=2, pady=10, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Scrollbar for text area
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=self.output_text.yview)
+        scrollbar = ttk.Scrollbar(basic_frame, orient="vertical", command=self.output_text.yview)
         scrollbar.grid(row=5, column=2, sticky=(tk.N, tk.S))
         self.output_text.configure(yscrollcommand=scrollbar.set)
+        
+        # Initialize data type display (show historical settings by default)
+        self.on_data_type_change()
+        
+    def create_enhanced_tab(self):
+        """Create the enhanced data acquisition tab"""
+        enhanced_frame = ttk.Frame(self.notebook)
+        self.notebook.add(enhanced_frame, text="Enhanced Data Acquisition")
+        
+        # Initialize enhanced data acquisition with access to main GUI
+        self.enhanced_da = EnhancedDataAcquisition(self.root, self.ib_conn)
+        
+        # Give enhanced DA access to main GUI's async loop
+        self.enhanced_da.main_gui = self
+        
+        # Create the enhanced interface
+        self.enhanced_da.create_enhanced_interface(enhanced_frame)
         
     def on_contract_type_change(self, event=None):
         """Handle contract type change"""
@@ -759,7 +802,7 @@ class AsyncIBDataManager:
         """Handle data type change"""
         data_type = self.data_type.get()
         if data_type == "historical":
-            self.historical_frame.grid()
+            self.historical_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         else:
             self.historical_frame.grid_remove()
 

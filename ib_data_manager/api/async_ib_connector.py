@@ -27,6 +27,11 @@ class AsyncIBConnector:
         self.depth_queue = None
         self.depth_task = None
         
+        # Real-time streaming management
+        self.active_quotes = {}  # symbol: ticker
+        self.active_depth = {}   # symbol: ticker
+        self.streaming_callbacks = {}  # ticker_id: callback
+        
     async def connect(self, host='127.0.0.1', port=4002, client_id=None, timeout=30, max_retries=3):
         """Async connection to IB Gateway with retry logic"""
         import random
@@ -121,16 +126,163 @@ class AsyncIBConnector:
                 logging.error(f"Auto-reconnect attempt {attempt + 1} failed: {str(e)}")
                 if attempt < max_attempts - 1:
                     delay = min(2 ** attempt, 60)
-                    await asyncio.sleep(delay)
                 continue
         
         logging.error("Auto-reconnect failed after all attempts")
         return False
         
-    def create_contract(self, symbol, sec_type="STK", exchange="SMART", currency="USD", expiry=None):
-        """Create a contract object"""
+    def get_proper_exchange(self, symbol, sec_type):
+        """Get the proper exchange for a given symbol and security type"""
+        
+        if sec_type == "FUT":
+            # Comprehensive futures exchange mapping
+            futures_exchanges = {
+                # CME Group - Equity Index Futures
+                'ES': 'CME',     # E-mini S&P 500
+                'MES': 'CME',    # Micro E-mini S&P 500
+                'NQ': 'CME',     # E-mini NASDAQ-100
+                'MNQ': 'CME',    # Micro E-mini NASDAQ-100
+                'RTY': 'CME',    # E-mini Russell 2000
+                'M2K': 'CME',    # Micro E-mini Russell 2000
+                'EMD': 'CME',    # E-mini S&P MidCap 400
+                
+                # CBOT - Interest Rate & Agricultural Futures
+                'YM': 'CBOT',    # E-mini Dow ($5)
+                'MYM': 'CBOT',   # Micro E-mini Dow
+                'ZB': 'CBOT',    # 30-Year Treasury Bond
+                'ZN': 'CBOT',    # 10-Year Treasury Note
+                'ZF': 'CBOT',    # 5-Year Treasury Note
+                'ZT': 'CBOT',    # 2-Year Treasury Note
+                'UB': 'CBOT',    # Ultra Treasury Bond
+                'TN': 'CBOT',    # 10-Year Treasury Note
+                'ZC': 'CBOT',    # Corn
+                'ZS': 'CBOT',    # Soybeans
+                'ZW': 'CBOT',    # Wheat
+                'ZM': 'CBOT',    # Soybean Meal
+                'ZL': 'CBOT',    # Soybean Oil
+                'ZO': 'CBOT',    # Oats
+                'ZR': 'CBOT',    # Rough Rice
+                
+                # NYMEX - Energy Futures
+                'CL': 'NYMEX',   # Crude Oil WTI
+                'MCL': 'NYMEX',  # Micro WTI Crude Oil
+                'NG': 'NYMEX',   # Natural Gas
+                'RB': 'NYMEX',   # RBOB Gasoline
+                'HO': 'NYMEX',   # Heating Oil
+                'BZ': 'NYMEX',   # Brent Crude Oil
+                
+                # COMEX - Metals Futures
+                'GC': 'COMEX',   # Gold
+                'MGC': 'COMEX',  # Micro Gold
+                'SI': 'COMEX',   # Silver
+                'SIL': 'COMEX',  # Micro Silver
+                'HG': 'COMEX',   # Copper
+                'MHG': 'COMEX',  # Micro Copper
+                'PL': 'COMEX',   # Platinum
+                'PA': 'COMEX',   # Palladium
+                
+                # CME - Currency Futures
+                '6E': 'CME',     # Euro FX
+                'M6E': 'CME',    # Micro Euro FX
+                '6B': 'CME',     # British Pound
+                'M6B': 'CME',    # Micro British Pound
+                '6J': 'CME',     # Japanese Yen
+                'MJY': 'CME',    # Micro Japanese Yen
+                '6A': 'CME',     # Australian Dollar
+                '6C': 'CME',     # Canadian Dollar
+                '6S': 'CME',     # Swiss Franc
+                '6N': 'CME',     # New Zealand Dollar
+                '6M': 'CME',     # Mexican Peso
+                '6R': 'CME',     # Russian Ruble
+                '6Z': 'CME',     # South African Rand
+                
+                # CME - Livestock Futures
+                'LE': 'CME',     # Live Cattle
+                'GF': 'CME',     # Feeder Cattle
+                'HE': 'CME',     # Lean Hogs
+                
+                # ICE - Soft Commodities
+                'CC': 'NYBOT',   # Cocoa
+                'CT': 'NYBOT',   # Cotton
+                'KC': 'NYBOT',   # Coffee
+                'SB': 'NYBOT',   # Sugar
+                'OJ': 'NYBOT',   # Orange Juice
+                
+                # EUREX - European Futures
+                'FESX': 'EUREX', # Euro Stoxx 50
+                'FDAX': 'EUREX', # DAX
+                'FGBL': 'EUREX', # Euro-Bund
+                'FGBM': 'EUREX', # Euro-Bobl
+                'FGBS': 'EUREX', # Euro-Schatz
+            }
+            return futures_exchanges.get(symbol, 'CME')  # Default to CME for unknown futures
+            
+        elif sec_type == "STK":
+            # Stock exchange mapping (most use SMART routing)
+            stock_exchanges = {
+                # Most US stocks use SMART routing
+                # Special cases can be added here if needed
+            }
+            return stock_exchanges.get(symbol, 'SMART')
+            
+        elif sec_type == "CASH":
+            # Forex pairs - use IDEALPRO for most major pairs
+            return "IDEALPRO"
+            
+        elif sec_type == "OPT":
+            # Options exchanges - typically follow underlying
+            if symbol in ['SPX', 'SPY', 'QQQ', 'IWM']:
+                return 'CBOE'  # Major index options
+            else:
+                return 'SMART'  # Most equity options
+                
+        elif sec_type == "IND":
+            # Index exchanges
+            index_exchanges = {
+                'SPX': 'CBOE',   # S&P 500 Index
+                'NDX': 'NASDAQ', # NASDAQ-100 Index
+                'RUT': 'CBOE',   # Russell 2000 Index
+                'VIX': 'CBOE',   # VIX Index
+                'DJX': 'CBOE',   # Dow Jones Index
+            }
+            return index_exchanges.get(symbol, 'CBOE')
+            
+        elif sec_type == "CFD":
+            return "SMART"
+            
+        elif sec_type == "BOND":
+            # Bond exchanges
+            return "SMART"  # Most bonds use SMART routing
+            
+        elif sec_type == "CMDTY":
+            return "SMART"
+            
+        elif sec_type == "CRYPTO":
+            # Cryptocurrency exchanges
+            return "PAXOS"  # IB's crypto exchange
+            
+        elif sec_type == "FUND":
+            return "SMART"
+            
+        elif sec_type == "WAR":
+            return "SMART"
+            
+        elif sec_type == "BAG":
+            return "SMART"
+            
+        else:
+            return "SMART"  # Default fallback
+
+    def create_contract(self, symbol, sec_type="STK", exchange=None, currency="USD", expiry=None):
+        """Create IB contract object with proper exchange mapping"""
         from ib_insync import Stock, Future, Option, Forex, Index, CFD, Bond, Commodity, Crypto, MutualFund, Warrant, Bag, Contract
         
+        # Get proper exchange if not specified
+        if exchange is None:
+            exchange = self.get_proper_exchange(symbol, sec_type)
+            logging.info(f"📍 Auto-selected exchange for {symbol} ({sec_type}): {exchange}")
+        
+        # Map security types to contract classes
         contract_map = {
             "STK": Stock,
             "FUT": Future,
@@ -173,7 +325,7 @@ class AsyncIBConnector:
             
     async def get_historical_data(self, symbol, sec_type="STK", exchange="SMART", 
                                 currency="USD", duration="1 D", bar_size="1 min", expiry=None,
-                                start_date=None, end_date=None):
+                                start_date=None, end_date=None, use_rth=True):
         """
         Get historical data for a contract. Supports both duration and date range modes.
         Duration mode: <number> <unit> (e.g. 1 D, 6 M, 2 Y, 3 W, 30 S), unit in S/D/W/M/Y
@@ -213,7 +365,7 @@ class AsyncIBConnector:
             # Handle date range mode with batch processing
             if start_date and end_date:
                 return await self._get_historical_data_date_range(
-                    qualified_contract, start_date, end_date, bar_size
+                    qualified_contract, start_date, end_date, bar_size, use_rth
                 )
             else:
                 # Duration mode validation
@@ -228,7 +380,7 @@ class AsyncIBConnector:
                     durationStr=duration,
                     barSizeSetting=bar_size,
                     whatToShow='TRADES',
-                    useRTH=False,
+                    useRTH=use_rth,
                     formatDate=1
                 )
                 return bars
@@ -237,7 +389,7 @@ class AsyncIBConnector:
             logging.error(f"Error getting historical data for {symbol}: {str(e)}")
             return None
             
-    async def _get_historical_data_date_range(self, contract, start_date, end_date, bar_size):
+    async def _get_historical_data_date_range(self, contract, start_date, end_date, bar_size, use_rth=True):
         """
         Get historical data for a specific date range with automatic batch processing
         to handle IBKR API limitations and prevent throttling
@@ -276,7 +428,7 @@ class AsyncIBConnector:
                         durationStr=duration_str,
                         barSizeSetting=bar_size,
                         whatToShow='TRADES',
-                        useRTH=False,
+                        useRTH=use_rth,
                         formatDate=1
                     )
                     
@@ -463,73 +615,251 @@ class AsyncIBConnector:
             logging.error(f"Error qualifying contract with expiry: {str(e)}")
             return None
             
-    async def start_realtime_quotes(self, symbol, sec_type="STK", exchange="SMART", 
+    async def start_realtime_quotes(self, symbol, sec_type="STK", exchange=None, 
                                   currency="USD", callback=None):
-        """Start real-time market data"""
+        """Start real-time market data with enhanced management"""
         try:
-            contract = self.create_contract(symbol, sec_type, exchange, currency)
+            # Check if already streaming this symbol
+            stream_key = f"{symbol}_{sec_type}"
+            if stream_key in self.active_quotes:
+                logging.info(f"Already streaming quotes for {symbol}")
+                return self.active_quotes[stream_key]
             
-            # Qualify the contract
-            logging.info(f"Qualifying contract: {contract}")
-            qualified_contracts = await self.ib.qualifyContractsAsync(contract)
-            if not qualified_contracts:
-                logging.error(f"Failed to qualify contract for {symbol}")
-                return None
+            # For futures, we need to get the front month contract
+            if sec_type == "FUT":
+                # Get available contracts first
+                base_contract = self.create_contract(symbol, sec_type, exchange, currency)
+                logging.info(f"Getting futures contracts for {symbol}...")
                 
-            qualified_contract = qualified_contracts[0]
-            logging.info(f"Qualification result: {qualified_contracts}")
+                try:
+                    # Get all available contracts for this symbol
+                    contracts = await self.ib.reqContractDetailsAsync(base_contract)
+                    if contracts:
+                        # Use the first available contract (usually front month)
+                        qualified_contract = contracts[0].contract
+                        logging.info(f"Using futures contract: {qualified_contract}")
+                    else:
+                        logging.error(f"No futures contracts found for {symbol}")
+                        return None
+                except Exception as e:
+                    logging.error(f"Error getting futures contracts for {symbol}: {e}")
+                    return None
+            else:
+                # For non-futures, use regular qualification
+                contract = self.create_contract(symbol, sec_type, exchange, currency)
+                
+                # Qualify the contract
+                logging.info(f"Qualifying contract for real-time quotes: {contract}")
+                qualified_contracts = await self.ib.qualifyContractsAsync(contract)
+                if not qualified_contracts:
+                    logging.error(f"Failed to qualify contract for {symbol}")
+                    return None
+                    
+                qualified_contract = qualified_contracts[0]
+                logging.info(f"Starting real-time quotes for: {qualified_contract}")
             
-            # Request market data
+            # Request market data with generic tick types for comprehensive data
             ticker = self.ib.reqMktData(qualified_contract, '', False, False)
             
+            # Store the active ticker
+            self.active_quotes[stream_key] = ticker
+            
             if callback:
+                # Store callback for management
+                ticker_id = id(ticker)
+                self.streaming_callbacks[ticker_id] = callback
+                
                 # Set up callback for updates
                 ticker.updateEvent += callback
                 
+                # Log successful setup
+                logging.info(f"✅ Real-time quotes active for {symbol} with callback")
+            else:
+                logging.info(f"✅ Real-time quotes active for {symbol} (no callback)")
+                
             return ticker
             
         except Exception as e:
-            logging.error(f"Error starting real-time quotes: {str(e)}")
+            logging.error(f"❌ Error starting real-time quotes for {symbol}: {str(e)}")
             return None
             
     def stop_realtime_quotes(self, ticker):
-        """Stop real-time market data"""
+        """Stop real-time market data with enhanced cleanup"""
         try:
-            self.ib.cancelMktData(ticker.contract)
-        except Exception as e:
-            logging.error(f"Error stopping real-time quotes: {str(e)}")
-            
-    async def start_market_depth(self, symbol, sec_type="STK", exchange="SMART", 
-                               currency="USD", num_rows=5, callback=None):
-        """Start Level 2 (market depth) data feed"""
-        try:
-            contract = self.create_contract(symbol, sec_type, exchange, currency)
-            logging.info(f"Qualifying contract for market depth: {contract}")
-            qualified_contracts = await self.ib.qualifyContractsAsync(contract)
-            if not qualified_contracts:
-                logging.error(f"Failed to qualify contract for {symbol}")
-                return None
+            if ticker and hasattr(ticker, 'contract'):
+                # Cancel the market data
+                self.ib.cancelMktData(ticker.contract)
                 
-            qualified_contract = qualified_contracts[0]
-            logging.info(f"Qualification result: {qualified_contracts}")
+                # Clean up tracking
+                symbol = ticker.contract.symbol
+                sec_type = ticker.contract.secType
+                stream_key = f"{symbol}_{sec_type}"
+                
+                # Remove from active quotes
+                if stream_key in self.active_quotes:
+                    del self.active_quotes[stream_key]
+                    
+                # Remove callback
+                ticker_id = id(ticker)
+                if ticker_id in self.streaming_callbacks:
+                    del self.streaming_callbacks[ticker_id]
+                    
+                logging.info(f"✅ Stopped real-time quotes for {symbol}")
+            else:
+                logging.warning("Invalid ticker provided to stop_realtime_quotes")
+                
+        except Exception as e:
+            logging.error(f"❌ Error stopping real-time quotes: {str(e)}")
             
+    async def start_market_depth(self, symbol, sec_type="STK", exchange=None, 
+                               currency="USD", num_rows=10, callback=None):
+        """Start Level 2 (market depth) data feed with enhanced management"""
+        try:
+            # Check if already streaming depth for this symbol
+            stream_key = f"{symbol}_{sec_type}"
+            if stream_key in self.active_depth:
+                logging.info(f"Already streaming market depth for {symbol}")
+                return self.active_depth[stream_key]
+            
+            # For futures, we need to get the front month contract
+            if sec_type == "FUT":
+                # Get available contracts first
+                base_contract = self.create_contract(symbol, sec_type, exchange, currency)
+                logging.info(f"Getting futures contracts for market depth: {symbol}...")
+                
+                try:
+                    # Get all available contracts for this symbol
+                    contracts = await self.ib.reqContractDetailsAsync(base_contract)
+                    if contracts:
+                        # Use the first available contract (usually front month)
+                        qualified_contract = contracts[0].contract
+                        logging.info(f"Using futures contract for depth: {qualified_contract}")
+                    else:
+                        logging.error(f"No futures contracts found for {symbol}")
+                        return None
+                except Exception as e:
+                    logging.error(f"Error getting futures contracts for {symbol}: {e}")
+                    return None
+            else:
+                # For non-futures, use regular qualification
+                contract = self.create_contract(symbol, sec_type, exchange, currency)
+                logging.info(f"Qualifying contract for market depth: {contract}")
+                qualified_contracts = await self.ib.qualifyContractsAsync(contract)
+                if not qualified_contracts:
+                    logging.error(f"Failed to qualify contract for {symbol}")
+                    return None
+                    
+                qualified_contract = qualified_contracts[0]
+                logging.info(f"Starting market depth for: {qualified_contract}")
+            
+            # Request market depth data
             ticker = self.ib.reqMktDepth(qualified_contract, numRows=num_rows)
             
+            # Store the active ticker
+            self.active_depth[stream_key] = ticker
+            
             if callback:
-                ticker.updateEvent += callback
+                # Store callback for management
+                ticker_id = id(ticker)
+                self.streaming_callbacks[ticker_id] = callback
+                
+                # Set up callback for updates - market depth uses different events
+                # Try multiple event types for market depth
+                if hasattr(ticker, 'updateEvent'):
+                    ticker.updateEvent += callback
+                    logging.info(f"✅ Subscribed to updateEvent for market depth")
+                    
+                if hasattr(ticker, 'domBidsEvent'):
+                    ticker.domBidsEvent += callback
+                    logging.info(f"✅ Subscribed to domBidsEvent for market depth")
+                    
+                if hasattr(ticker, 'domAsksEvent'):
+                    ticker.domAsksEvent += callback
+                    logging.info(f"✅ Subscribed to domAsksEvent for market depth")
+                
+                # Also try the general market depth event
+                if hasattr(self.ib, 'mktDepthEvent'):
+                    self.ib.mktDepthEvent += lambda ticker_update: callback(ticker_update) if ticker_update.contract == qualified_contract else None
+                    logging.info(f"✅ Subscribed to global mktDepthEvent")
+                
+                logging.info(f"✅ Market depth active for {symbol} with callback")
+            else:
+                logging.info(f"✅ Market depth active for {symbol} (no callback)")
+                
+            # Debug: Print ticker attributes to see what's available
+            ticker_attrs = [attr for attr in dir(ticker) if not attr.startswith('_')]
+            logging.info(f"🔍 Market depth ticker attributes: {ticker_attrs}")
                 
             return ticker
             
         except Exception as e:
-            logging.error(f"Error starting market depth: {str(e)}")
+            logging.error(f"❌ Error starting market depth for {symbol}: {str(e)}")
             return None
             
     def stop_market_depth(self, ticker):
-        """Stop Level 2 (market depth) data feed"""
+        """Stop Level 2 (market depth) data feed with enhanced cleanup"""
         try:
-            self.ib.cancelMktDepth(ticker.contract)
+            if ticker and hasattr(ticker, 'contract'):
+                # Cancel the market depth
+                self.ib.cancelMktDepth(ticker.contract)
+                
+                # Clean up tracking
+                symbol = ticker.contract.symbol
+                sec_type = ticker.contract.secType
+                stream_key = f"{symbol}_{sec_type}"
+                
+                # Remove from active depth
+                if stream_key in self.active_depth:
+                    del self.active_depth[stream_key]
+                    
+                # Remove callback
+                ticker_id = id(ticker)
+                if ticker_id in self.streaming_callbacks:
+                    del self.streaming_callbacks[ticker_id]
+                    
+                logging.info(f"✅ Stopped market depth for {symbol}")
+            else:
+                logging.warning("Invalid ticker provided to stop_market_depth")
+                
         except Exception as e:
-            logging.error(f"Error stopping market depth: {str(e)}")
+            logging.error(f"❌ Error stopping market depth: {str(e)}")
+            
+    def stop_all_streaming(self):
+        """Stop all active streaming data feeds"""
+        try:
+            stopped_count = 0
+            
+            # Stop all quote streams
+            for stream_key, ticker in list(self.active_quotes.items()):
+                try:
+                    self.stop_realtime_quotes(ticker)
+                    stopped_count += 1
+                except Exception as e:
+                    logging.error(f"Error stopping quotes for {stream_key}: {e}")
+                    
+            # Stop all depth streams
+            for stream_key, ticker in list(self.active_depth.items()):
+                try:
+                    self.stop_market_depth(ticker)
+                    stopped_count += 1
+                except Exception as e:
+                    logging.error(f"Error stopping depth for {stream_key}: {e}")
+                    
+            logging.info(f"✅ Stopped {stopped_count} streaming feeds")
+            return stopped_count
+            
+        except Exception as e:
+            logging.error(f"❌ Error stopping all streams: {str(e)}")
+            return 0
+            
+    def get_streaming_status(self):
+        """Get current streaming status"""
+        return {
+            'quotes': list(self.active_quotes.keys()),
+            'depth': list(self.active_depth.keys()),
+            'total_streams': len(self.active_quotes) + len(self.active_depth),
+            'connected': self.connected
+        }
             
     async def get_account_info(self):
         """Get account information"""

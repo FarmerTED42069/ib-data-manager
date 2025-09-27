@@ -8,6 +8,8 @@ A clean, easy-to-use interface for pulling data from Interactive Brokers Gateway
 - **Multiple Data Types**: 
   - Historical market data (bars)
   - Real-time quotes
+  - Market depth
+  - options data
   - Account information
 - **Local Database Storage**: All data is stored in SQLite database for easy access
 - **Data Export**: Export data to CSV files
