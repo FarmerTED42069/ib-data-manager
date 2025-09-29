@@ -55,13 +55,30 @@ class ResultsPanel:
         data_frame = ttk.Frame(self.notebook)
         self.notebook.add(data_frame, text="📊 Data Table")
         
+        # Create paned window for symbol list and data view
+        paned_window = ttk.PanedWindow(data_frame, orient=tk.HORIZONTAL)
+        paned_window.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Left panel: Symbol list
+        symbols_frame = ttk.LabelFrame(paned_window, text="📋 Loaded Symbols", padding="5")
+        paned_window.add(symbols_frame, weight=1)
+        
+        # Symbol listbox
+        self.symbols_listbox = tk.Listbox(symbols_frame, height=15, font=("Arial", 10))
+        self.symbols_listbox.pack(fill=tk.BOTH, expand=True)
+        self.symbols_listbox.bind("<<ListboxSelect>>", self.on_symbol_select)
+        
+        # Right panel: Data display
+        data_display_frame = ttk.Frame(paned_window)
+        paned_window.add(data_display_frame, weight=3)
+        
         # Header with symbol info
-        header_frame = ttk.Frame(data_frame)
-        header_frame.pack(fill=tk.X, padx=10, pady=5)
+        header_frame = ttk.Frame(data_display_frame)
+        header_frame.pack(fill=tk.X, pady=5)
         
         self.symbol_label = ttk.Label(
             header_frame, 
-            text="No data loaded", 
+            text="Select a symbol to view data", 
             font=("Arial", 14, "bold")
         )
         self.symbol_label.pack(side=tk.LEFT)
@@ -75,8 +92,8 @@ class ResultsPanel:
         self.data_info_label.pack(side=tk.RIGHT)
         
         # Data table
-        table_frame = ttk.Frame(data_frame)
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        table_frame = ttk.Frame(data_display_frame)
+        table_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         # Treeview for data display
         columns = ("date", "open", "high", "low", "close", "volume")
@@ -375,7 +392,8 @@ class ResultsPanel:
         # Update summary statistics
         self.update_summary_stats(data)
         
-        # Switch to data view to show results
+        # Update symbol list and switch to data view
+        self.refresh_symbol_list()
         self.notebook.select(0)
         
     def update_summary_stats(self, data):
@@ -838,3 +856,33 @@ vs Overall avg: {((sum(closes[-5:])/5) / (sum(closes)/len(closes)) - 1) * 100:+.
                 
         except Exception as e:
             print(f"Error clearing live data: {e}")
+    
+    def refresh_symbol_list(self):
+        """Refresh the symbol list with all loaded data"""
+        self.symbols_listbox.delete(0, tk.END)
+        
+        if hasattr(self.dashboard, 'current_data') and self.dashboard.current_data:
+            for symbol in sorted(self.dashboard.current_data.keys()):
+                data_info = self.dashboard.current_data[symbol]
+                bar_count = len(data_info['data']) if 'data' in data_info else 0
+                display_text = f"{symbol} ({bar_count} bars)"
+                self.symbols_listbox.insert(tk.END, display_text)
+    
+    def on_symbol_select(self, event):
+        """Handle symbol selection from the list"""
+        selection = self.symbols_listbox.curselection()
+        if not selection:
+            return
+            
+        # Get selected symbol name (remove the bar count part)
+        selected_text = self.symbols_listbox.get(selection[0])
+        symbol = selected_text.split(' (')[0]
+        
+        # Load data for selected symbol
+        if hasattr(self.dashboard, 'current_data') and symbol in self.dashboard.current_data:
+            data_info = self.dashboard.current_data[symbol]
+            self.update_data(symbol, data_info['data'], data_info.get('description', ''))
+    
+    def refresh_data_list(self):
+        """Refresh the data list - called by batch operations"""
+        self.refresh_symbol_list()

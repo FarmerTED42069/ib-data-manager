@@ -325,7 +325,15 @@ class EnhancedTickCapture:
     async def _process_market_depth(self, symbol: str, ticker):
         """Process market depth updates and extract tick data"""
         try:
-            print(f"🔍 DEBUG: _process_market_depth called for {symbol}, ticker: {ticker}")
+            print(f"🔍 DEBUG: _process_market_depth called for {symbol}")
+            print(f"🔍 DEBUG: ticker attributes: {[attr for attr in dir(ticker) if not attr.startswith('_')]}")
+            print(f"🔍 DEBUG: hasattr domBids: {hasattr(ticker, 'domBids')}")
+            print(f"🔍 DEBUG: hasattr domAsks: {hasattr(ticker, 'domAsks')}")
+            if hasattr(ticker, 'domBids'):
+                print(f"🔍 DEBUG: domBids length: {len(ticker.domBids) if ticker.domBids else 0}")
+            if hasattr(ticker, 'domAsks'):
+                print(f"🔍 DEBUG: domAsks length: {len(ticker.domAsks) if ticker.domAsks else 0}")
+            
             now = datetime.now()
             self.last_update[symbol] = now
             
@@ -408,12 +416,15 @@ class EnhancedTickCapture:
             if hasattr(ticker, 'last') and ticker.last and ticker.last > 0:
                 now = datetime.now()
                 
+                # Determine trade side using our improved logic
+                trade_side = self._determine_trade_side(ticker, symbol)
+                
                 # Create tick data
                 tick = TickData(
                     timestamp=now,
                     price=float(ticker.last),
                     size=int(getattr(ticker, 'lastSize', 0)),
-                    side='unknown',  # We don't know buy/sell from basic quotes
+                    side=trade_side,
                     exchange=getattr(ticker.contract, 'exchange', '')
                 )
                 
@@ -438,26 +449,54 @@ class EnhancedTickCapture:
             logging.error(f"❌ Error processing quote update for {symbol}: {str(e)}")
     
     def _determine_trade_side(self, ticker, symbol: str) -> str:
-        """Determine if trade was buy or sell based on order book"""
+        """Determine if trade was buy or sell using multiple methods"""
         try:
             if not hasattr(ticker, 'last') or not ticker.last:
                 return 'unknown'
             
             last_price = float(ticker.last)
             
-            # Get current order book
+            # Method 1: Use bid/ask if available
+            if hasattr(ticker, 'bid') and hasattr(ticker, 'ask') and ticker.bid and ticker.ask:
+                bid_price = float(ticker.bid)
+                ask_price = float(ticker.ask)
+                mid_price = (bid_price + ask_price) / 2
+                
+                # Trade at or above mid = buy, below mid = sell
+                if last_price >= mid_price:
+                    return 'buy'
+                else:
+                    return 'sell'
+            
+            # Method 2: Use order book if available
             if symbol in self.order_books:
                 snapshot = self.order_books[symbol]
                 if snapshot.bids and snapshot.asks:
                     mid_price = snapshot.mid_price
                     
-                    # Simple logic: above mid = buy, below mid = sell
                     if last_price >= mid_price:
                         return 'buy'
                     else:
                         return 'sell'
             
-            return 'unknown'
+            # Method 3: Use price momentum (compare to recent trades)
+            if symbol in self.tick_buffers and len(self.tick_buffers[symbol]) > 1:
+                recent_ticks = list(self.tick_buffers[symbol])[-5:]  # Last 5 trades
+                if len(recent_ticks) >= 2:
+                    prev_price = recent_ticks[-2].price
+                    
+                    # If price is rising, likely a buy; if falling, likely a sell
+                    if last_price > prev_price:
+                        return 'buy'
+                    elif last_price < prev_price:
+                        return 'sell'
+                    else:
+                        # Same price - use size heuristic or default to buy
+                        return 'buy'  # Slight bias toward buy for same-price trades
+            
+            # Method 4: Default classification based on tick direction
+            # This is a fallback when no other method works
+            return 'buy'  # Default to buy when uncertain
             
         except Exception as e:
             logging.error(f"Error determining trade side: {e}")
